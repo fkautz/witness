@@ -157,6 +157,34 @@ Examples:
 - Key without version: `azurekms://my-vault.vault.azure.net/my-signing-key`
 - Key with specific version: `azurekms://my-vault.vault.azure.net/my-signing-key/1234567890abcdef`
 
+#### Sovereign Cloud Support
+
+Azure Key Vault is supported in Azure sovereign clouds (Government and China). The URI format includes the appropriate vault DNS suffix for each cloud:
+
+- **Azure Public Cloud**: `azurekms://$VAULT_NAME.vault.azure.net/$KEY_NAME`
+- **Azure Government**: `azurekms://$VAULT_NAME.vault.usgovcloudapi.net/$KEY_NAME`
+- **Azure China**: `azurekms://$VAULT_NAME.vault.azure.cn/$KEY_NAME`
+
+The cloud environment is automatically detected from the vault URL. Alternatively, you can set the `AZURE_ENVIRONMENT` environment variable to explicitly specify the cloud:
+
+```bash
+# For Azure Government
+export AZURE_ENVIRONMENT=AzureGovernment
+
+# For Azure China
+export AZURE_ENVIRONMENT=AzureChina
+
+# For Azure Public (default)
+export AZURE_ENVIRONMENT=AzurePublic
+```
+
+Example usage in Azure Government:
+```bash
+witness run -s test \
+  --signer-kms-ref=azurekms://gov-vault.vault.usgovcloudapi.net/signing-key \
+  -- echo "hello world" > hello.txt
+```
+
 #### Authentication
 
 Witness uses Azure DefaultAzureCredential for authentication, which supports multiple authentication methods in the following order:
@@ -167,6 +195,11 @@ Witness uses Azure DefaultAzureCredential for authentication, which supports mul
 4. **Azure CLI**: Uses credentials from `az login` for local development
 
 For more information on authentication methods, see the [Azure Identity documentation](https://docs.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication).
+
+**Sovereign Cloud Authentication**: When using Azure Government or Azure China, ensure your authentication method is configured for the correct cloud:
+- For Azure CLI: Use `az cloud set -n AzureUSGovernment` or `az cloud set -n AzureChinaCloud` before `az login`
+- For service principals: Ensure the service principal is created in the correct cloud tenant
+- For managed identities: They automatically work within their respective cloud environments
 
 #### Required Permissions
 
