@@ -29,7 +29,7 @@ ensure that your software was handled safely from source to deployment.</span>
 - Distribute attestations and policy across air gaps
 
 ### Key Features
- - Integrations with GitLab, GitHub, AWS, and GCP.
+ - Integrations with GitLab, GitHub, AWS, GCP, and Azure.
  - Designed to run in both containerized and non-containerized environments **without** elevated privileges.
  - Implements the in-toto specification (including ITE-5, ITE-6 and ITE-7)
  - An embedded OPA Rego policy engine for policy enforcement

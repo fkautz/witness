@@ -1,5 +1,5 @@
 # KMS Signer
-Witness supports signing both attestations (generated with `witness run`) and policies (signed with `witness sign`) using a Key Management Service (KMS) key through the provision of a KMS signer. The KMS signer currently supports AWS KMS and GCP KMS. Follow-up support for Azure Key Vault and HashiCorp Vault (with transit engine) is planned.
+Witness supports signing both attestations (generated with `witness run`) and policies (signed with `witness sign`) using a Key Management Service (KMS) key through the provision of a KMS signer. The KMS signer currently supports AWS KMS, GCP KMS, and Azure Key Vault. Follow-up support for HashiCorp Vault (with transit engine) is planned.
 
 ## Usage
 Based on the KMS signer functionality presented in the [Sigstore Cosign project](https://docs.sigstore.dev/key_management/overview/), Witness uses a URI-based reference scheme to allow users to declare the KMS signer provider they want to use (e.g., GCP, AWS) and the unique information that identifies the specific key they want to use (e.g., GCP Project, AWS ARN).
@@ -142,3 +142,105 @@ The calling user or service account must have the following IAM roles:
 
 - Safer KMS Viewer Role
 - Cloud KMS CryptoKey Signer/Verifier (`roles/cloudkms.signerVerifier`)
+
+### Azure Key Vault
+
+The URI format for Azure Key Vault is:
+
+```shell
+azurekms://$VAULT_NAME.vault.azure.net/$KEY_NAME[/$KEY_VERSION]
+```
+
+Where `$VAULT_NAME`, `$KEY_NAME`, and optionally `$KEY_VERSION` are replaced with the correct values. If `$KEY_VERSION` is omitted, the latest version of the key will be used.
+
+Examples:
+- Key without version: `azurekms://my-vault.vault.azure.net/my-signing-key`
+- Key with specific version: `azurekms://my-vault.vault.azure.net/my-signing-key/1234567890abcdef`
+
+#### Authentication
+
+Witness uses Azure DefaultAzureCredential for authentication, which supports multiple authentication methods in the following order:
+
+1. **Environment Variables**: Set `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` for service principal authentication
+2. **Managed Identity**: Automatically used when running on Azure resources (VMs, AKS, Azure Functions, etc.)
+3. **Workload Identity**: For Kubernetes workloads with Azure AD Workload Identity
+4. **Azure CLI**: Uses credentials from `az login` for local development
+
+For more information on authentication methods, see the [Azure Identity documentation](https://docs.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication).
+
+#### Required Permissions
+
+The identity (service principal, managed identity, or user) must have appropriate Key Vault permissions:
+
+**For Key Vaults using Azure RBAC (recommended):**
+- **Key Vault Crypto User** role for signing and verification operations
+
+**For Key Vaults using Access Policies (legacy):**
+- Key permissions: `get`, `sign`, `verify`
+
+**For Managed HSM:**
+- **Managed HSM Crypto User** role
+
+#### Supported Key Types
+
+Azure Key Vault supports the following key types for signing:
+
+- **RSA**: 2048, 3072, and 4096-bit keys (software or HSM-backed)
+  - Algorithms: RS256, RS384, RS512, PS256, PS384, PS512
+- **Elliptic Curve (EC)**: P-256, P-384, P-521 curves (software or HSM-backed)
+  - Algorithms: ES256, ES384, ES512
+
+Note: P-256K (secp256k1) is supported by Azure but not by the current implementation due to Go standard library limitations.
+
+#### Verification Options
+
+By default, signature verification is performed remotely using Azure Key Vault. For offline verification, you can use the `--signer-kms-azure-remote-verify=false` flag to download the public key and verify locally:
+
+```bash
+witness verify -p policy-signed.json -a test.json \
+  --verifier-kms-ref=azurekms://my-vault.vault.azure.net/my-key \
+  --verifier-kms-azure-remote-verify=false \
+  -f test.txt
+```
+
+#### Example Usage
+
+Signing an attestation:
+```bash
+witness run -s test \
+  --signer-kms-ref=azurekms://my-vault.vault.azure.net/my-signing-key \
+  -- echo "hello world" > hello.txt
+```
+
+Signing a policy:
+```bash
+witness sign -f policy.json -o policy-signed.json \
+  --signer-kms-ref=azurekms://my-vault.vault.azure.net/my-signing-key
+```
+
+Declaring an Azure Key Vault key in a Witness policy:
+```json
+{
+  "expires": "2035-12-17T23:57:40-05:00",
+  "steps": {
+    "test": {
+      "name": "test",
+      "attestations": [
+        {
+          "type": "https://witness.dev/attestations/command-run/v0.1"
+        }
+      ],
+      "functionaries": [
+        {
+          "type": "publickey",
+          "publickeyid": "azurekms://my-vault.vault.azure.net/my-signing-key"
+        }
+      ]
+    }
+  },
+  "publickeys": {
+    "azurekms://my-vault.vault.azure.net/my-signing-key": {
+      "keyid": "azurekms://my-vault.vault.azure.net/my-signing-key"
+    }
+  }
+}
